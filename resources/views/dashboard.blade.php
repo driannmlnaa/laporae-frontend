@@ -15,10 +15,19 @@
 <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
     <div>
         <h1 class="h3 mb-1">Dashboard Pengguna</h1>
-        <p class="text-muted mb-0">Selamat datang, {{ $displayName }}. Pantau status laporan Anda di sini.</p>
+        <p class="text-muted mb-1">
+            Selamat datang, <span class="fw-semibold">{{ $displayName }}</span>. 
+            Pantau status laporan Anda di aplikasi <span class="fw-semibold text-primary">LaporAe</span>.
+        </p>
+        <small class="text-muted">
+            {{ \Carbon\Carbon::now()->translatedFormat('l, d F Y') }}
+        </small>
     </div>
-    <a href="{{ route('lapor.create') }}" class="btn btn-primary align-self-center">Buat Laporan</a>
+    <a href="{{ route('lapor.create') }}" class="btn btn-primary align-self-center shadow-sm">
+        + Buat Laporan
+    </a>
 </div>
+
 
 <div class="row g-3 mb-4">
     <div class="col-md-4">
@@ -112,6 +121,12 @@
                     </tbody>
                 </table>
             </div>
+            <p class="text-muted small mt-2 mb-0">
+                Keterangan status: 
+                <span class="badge bg-primary-subtle text-primary">Baru Masuk</span> = menunggu verifikasi,
+                <span class="badge bg-warning-subtle text-warning-emphasis">Sedang Diverifikasi</span> = diproses petugas,
+                <span class="badge bg-success-subtle text-success-emphasis">Selesai Ditindaklanjuti</span> = tindak lanjut selesai.
+            </p>
         @endif
     </div>
 </div>
