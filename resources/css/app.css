@@ -1,0 +1,105 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+/* Custom app styles + small helper to keep design consistent */
+:root{
+  --blue: #0b63ff;
+  --blue-dark: #0650d6;
+  --muted: #6b7280;
+  --card-bg: #ffffff;
+}
+
+*{box-sizing:border-box;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial}
+
+body{
+  margin:0;
+  min-height:100vh;
+  background:#f3f7ff;
+}
+
+/* Panel split layout used by login/register pages */
+.panel{
+  width:100%;
+  max-width:1100px;
+  border-radius:12px;
+  overflow:hidden;
+  display:grid;
+  grid-template-columns:1fr 520px;
+  box-shadow:0 20px 50px rgba(2,6,23,0.08);
+  background:var(--card-bg);
+  margin:24px auto;
+}
+
+/* left column */
+.panel .left{
+  padding:48px;
+  background:#fff;
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+  align-items:flex-start;
+  justify-content:center;
+}
+.panel .left h1{margin:0;font-size:28px;color:#06202a}
+.panel .left p{margin:0;color:var(--muted);max-width:480px}
+.panel .left .illustration{width:100%;max-width:420px;margin-top:18px}
+
+/* right column */
+.panel .right{
+  padding:48px;
+  background:linear-gradient(180deg,var(--blue),var(--blue-dark));
+  color:#fff;
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+  align-items:center;
+  justify-content:center;
+}
+.panel .card{
+  width:100%;
+  max-width:360px;
+  background:rgba(255,255,255,0.06);
+  padding:28px;
+  border-radius:12px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+/* Forms (light) for register page where right/left swapped */
+.panel.register-left{
+  background:linear-gradient(180deg,var(--blue),var(--blue-dark));
+  color:#fff;
+  text-align:center;
+}
+.panel.register-right{
+  background:#fff;
+  color:#06202a;
+}
+
+/* Buttons */
+.btn-primary-custom{
+  display:inline-block;
+  width:100%;
+  padding:12px;
+  border-radius:10px;
+  border:0;
+  background:#ffd166;
+  color:#06202a;
+  font-weight:700;
+  cursor:pointer;
+}
+
+/* Responsive */
+@media(max-width:980px){
+  .panel{grid-template-columns:1fr}
+  .panel .left{padding:28px;text-align:center}
+  .panel .right{padding:28px}
+}
