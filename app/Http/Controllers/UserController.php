@@ -20,8 +20,9 @@ class UserController extends Controller
     {
         $data = $request->validate([
             'nama_lengkap' => 'required|string|max:255',
-            'email' => 'required|email|max:255|unique:users,email',
-            'password' => 'required|string|min:8|confirmed',
+            'email'        => 'required|email|max:255|unique:users,email',
+            'password'     => 'required|string|min:8|confirmed',
+            'is_admin'     => 'nullable|boolean',
         ]);
 
         try {
@@ -29,11 +30,13 @@ class UserController extends Controller
 
             $user = User::create([
                 'nama_lengkap' => $data['nama_lengkap'],
-                'email' => $data['email'],
-                'password' => Hash::make($data['password']),
+                'email'        => $data['email'],
+                'password'     => Hash::make($data['password']),
+                'is_admin'     => $request->boolean('is_admin'), // <--- penting
             ]);
 
             DB::commit();
+
             $this->rememberUser($request, $user);
 
             return redirect()->route('dashboard');
@@ -44,17 +47,15 @@ class UserController extends Controller
         }
     }
 
-    /** Menampilkan form login pengguna */
     public function loginForm()
     {
-        return view('login');
+        return view('auth.login');
     }
 
-    /** Memproses login pengguna */
     public function loginProcess(Request $request)
     {
         $request->validate([
-            'email' => 'required|email',
+            'email'    => 'required|email',
             'password' => 'required|string',
         ]);
 
@@ -62,23 +63,37 @@ class UserController extends Controller
         $user = User::where('email', $cred['email'])->first();
 
         if (! $user) {
-            return back()->withErrors(['email' => 'Email atau password salah'])->withInput();
+            return back()
+                ->withErrors(['email' => 'Email atau password salah'])
+                ->withInput();
         }
 
-        $stored = $user->password;
-        $passwordOk = false;
+        $stored      = $user->password;
+        $passwordOk  = false;   
 
         try {
             $passwordOk = Hash::check($cred['password'], $stored);
         } catch (\RuntimeException $e) {
+
             $plain = $cred['password'];
-            if (!$passwordOk && is_string($stored) && strlen($stored) === 32 && md5($plain) === $stored) { $passwordOk = true; }
-            if (!$passwordOk && is_string($stored) && strlen($stored) === 40 && sha1($plain) === $stored) { $passwordOk = true; }
-            if (!$passwordOk && $plain === $stored) { $passwordOk = true; }
+
+            if (!$passwordOk && is_string($stored) && strlen($stored) === 32 && md5($plain) === $stored) {
+                $passwordOk = true;
+            }
+
+            if (!$passwordOk && is_string($stored) && strlen($stored) === 40 && sha1($plain) === $stored) {
+                $passwordOk = true;
+            }
+
+            if (!$passwordOk && $plain === $stored) {
+                $passwordOk = true;
+            }
         }
 
         if (! $passwordOk) {
-            return back()->withErrors(['email' => 'Email atau password salah'])->withInput();
+            return back()
+                ->withErrors(['email' => 'Email atau password salah'])
+                ->withInput();
         }
 
         try {
@@ -87,12 +102,18 @@ class UserController extends Controller
                 $user->save();
             }
         } catch (\Throwable $e) {
-            // abaikan error rehash
+
         }
 
         $this->rememberUser($request, $user);
+
+        if ($user->is_admin) {
+            return redirect()->route('admin.dashboard');
+        }
+
         return redirect()->intended(route('dashboard'));
     }
+
 
     public function dashboard(Request $request)
     {
@@ -136,13 +157,24 @@ class UserController extends Controller
     protected function rememberUser(Request $request, User $user): void
     {
         $request->session()->regenerate();
-        session([
-            'user' => [
-                'id' => $user->id,
-                'nama' => $user->nama_lengkap,
-                'email' => $user->email,
-            ],
-        ]);
+
+        if ($user->is_admin) {
+            session([
+                'admin' => [
+                    'id'    => $user->id,
+                    'nama'  => $user->nama_lengkap,
+                    'email' => $user->email,
+                ],
+            ]);
+        } else {
+            session([
+                'user' => [
+                    'id'    => $user->id,
+                    'nama'  => $user->nama_lengkap,
+                    'email' => $user->email,
+                ],
+            ]);
+        }
     }
 
     protected function currentUser(): ?User

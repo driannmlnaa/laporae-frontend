@@ -6,16 +6,17 @@ use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    if (session()->has('user')) {
-        return redirect()->route('dashboard');
-    }
-
     if (session()->has('admin')) {
         return redirect()->route('admin.dashboard');
     }
 
+    if (session()->has('user')) {
+        return redirect()->route('dashboard');
+    }
+
     return redirect()->route('login.form');
 })->name('home');
+
 
 Route::get('/register', [UserController::class, 'registerForm'])->name('register.form');
 Route::post('/register', [UserController::class, 'registerProcess'])->name('register.process');

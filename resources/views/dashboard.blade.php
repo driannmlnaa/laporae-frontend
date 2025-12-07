@@ -114,7 +114,7 @@
                                             @method('DELETE')
                                             <button type="submit" class="btn btn-danger btn-sm">Hapus</button>
                                         </form>
-                                    </div>
+                                     </div>
                                 </td>
                             </tr>
                         @endforeach
