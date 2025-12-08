@@ -2,15 +2,19 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Laporan;
-use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 
 class UserController extends Controller
 {
+    protected string $backend;
+
+    public function __construct()
+    {
+        // URL backend dari config/services.php
+        $this->backend = rtrim(config('services.backend.url'), '/');
+    }
+
     public function registerForm()
     {
         return view('auth.register');
@@ -18,33 +22,66 @@ class UserController extends Controller
 
     public function registerProcess(Request $request)
     {
-        $data = $request->validate([
+        $request->validate([
             'nama_lengkap' => 'required|string|max:255',
-            'email'        => 'required|email|max:255|unique:users,email',
+            'email'        => 'required|email|max:255',
             'password'     => 'required|string|min:8|confirmed',
-            'is_admin'     => 'nullable|boolean',
         ]);
 
-        try {
-            DB::beginTransaction();
+        $response = Http::withHeaders([
+            'Accept' => 'application/json',
+        ])->post($this->backend . '/api/auth/register', [
+            'nama_lengkap' => $request->nama_lengkap,
+            'email'        => $request->email,
+            'password'     => $request->password,
+        ]);
 
-            $user = User::create([
-                'nama_lengkap' => $data['nama_lengkap'],
-                'email'        => $data['email'],
-                'password'     => Hash::make($data['password']),
-                'is_admin'     => $request->boolean('is_admin'), // <--- penting
+        if (! $response->successful()) {
+            $json    = $response->json();
+            $message = $json['message'] ?? 'Gagal membuat akun.';
+
+            return back()
+                ->withInput()
+                ->withErrors(['register' => $message]);
+        }
+
+        $data  = $response->json();
+        $user  = $data['user'] ?? null;
+        $token = $data['authorisation']['token'] ?? null;
+
+        if (! $user || ! $token) {
+            return back()
+                ->withInput()
+                ->withErrors(['email' => 'Gagal login. Response server tidak valid.']);
+        }
+
+        $request->session()->regenerate();
+
+        // === JIKA ADMIN ===
+        if (!empty($user['is_admin']) && (int)$user['is_admin'] === 1) {
+            session([
+                'admin' => [
+                    'id'    => $user['id'],
+                    'nama'  => $user['nama_lengkap'],
+                    'email' => $user['email'],
+                ],
+                'admin_token' => $token,
             ]);
 
-            DB::commit();
-
-            $this->rememberUser($request, $user);
-
-            return redirect()->route('dashboard');
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            Log::error('Register failed: ' . $e->getMessage());
-            return back()->withInput()->withErrors(['register' => 'Gagal membuat akun.']);
+            return redirect()->route('admin.dashboard');
         }
+
+        // === USER BIASA ===
+        session([
+            'user' => [
+                'id'    => $user['id'],
+                'nama'  => $user['nama_lengkap'],
+                'email' => $user['email'],
+            ],
+            'user_token' => $token,
+        ]);
+
+        return redirect()->intended(route('dashboard'));
     }
 
     public function loginForm()
@@ -59,131 +96,130 @@ class UserController extends Controller
             'password' => 'required|string',
         ]);
 
-        $cred = $request->only('email', 'password');
-        $user = User::where('email', $cred['email'])->first();
+        $response = Http::post($this->backend . '/api/auth/login', [
+            'email'    => $request->email,
+            'password' => $request->password,
+        ]);
 
-        if (! $user) {
+        if (! $response->successful()) {
             return back()
-                ->withErrors(['email' => 'Email atau password salah'])
-                ->withInput();
+                ->withInput()
+                ->withErrors(['email' => 'Email atau password salah']);
         }
 
-        $stored      = $user->password;
-        $passwordOk  = false;   
+        $data  = $response->json();
+        $user  = $data['user'] ?? null;
+        $token = $data['authorisation']['token'] ?? null;
 
-        try {
-            $passwordOk = Hash::check($cred['password'], $stored);
-        } catch (\RuntimeException $e) {
-
-            $plain = $cred['password'];
-
-            if (!$passwordOk && is_string($stored) && strlen($stored) === 32 && md5($plain) === $stored) {
-                $passwordOk = true;
-            }
-
-            if (!$passwordOk && is_string($stored) && strlen($stored) === 40 && sha1($plain) === $stored) {
-                $passwordOk = true;
-            }
-
-            if (!$passwordOk && $plain === $stored) {
-                $passwordOk = true;
-            }
-        }
-
-        if (! $passwordOk) {
+        if (! $user || ! $token) {
             return back()
-                ->withErrors(['email' => 'Email atau password salah'])
-                ->withInput();
+                ->withInput()
+                ->withErrors(['email' => 'Gagal login. Response server tidak valid.']);
         }
 
-        try {
-            if (Hash::needsRehash($stored) || !is_string($stored) || strpos($stored, '$2y$') !== 0) {
-                $user->password = Hash::make($cred['password']);
-                $user->save();
-            }
-        } catch (\Throwable $e) {
+        $request->session()->regenerate();
 
-        }
+        // === JIKA ADMIN ===
+        if (!empty($user['is_admin']) && (int)$user['is_admin'] === 1) {
+            session([
+                'admin' => [
+                    'id'    => $user['id'],
+                    'nama'  => $user['nama_lengkap'],
+                    'email' => $user['email'],
+                ],
+                'admin_token' => $token,
+            ]);
 
-        $this->rememberUser($request, $user);
-
-        if ($user->is_admin) {
             return redirect()->route('admin.dashboard');
         }
+
+        // === USER BIASA ===
+        session([
+            'user' => [
+                'id'    => $user['id'],
+                'nama'  => $user['nama_lengkap'],
+                'email' => $user['email'],
+            ],
+            'user_token' => $token,
+        ]);
 
         return redirect()->intended(route('dashboard'));
     }
 
-
     public function dashboard(Request $request)
     {
+        // dashboard ini khusus user biasa
         if (! session()->has('user')) {
             return redirect()->route('login.form')->with('error', 'Silakan login terlebih dahulu.');
         }
 
-        $user = $this->currentUser();
-        if (! $user) {
-            $request->session()->forget('user');
-            return redirect()->route('login.form')->with('error', 'Session tidak valid. Silakan login ulang.');
+        $sessionUser = session('user');
+        $user        = (object) $sessionUser;
+
+        $token = session('user_token');
+
+        $response = Http::withHeaders([
+            'Accept' => 'application/json',
+        ])->withToken($token)->get($this->backend . '/api/laporans');
+
+        if (! $response->successful()) {
+            $request->session()->forget(['user', 'user_token']);
+
+            return redirect()->route('login.form')
+                ->with('error', 'Session berakhir, silakan login ulang.');
         }
 
-        $laporans = Laporan::with('pelapor')
-            ->where('pelapor_id', $user->id)
-            ->latest()
-            ->get();
+        $laporans = collect($response->json('data') ?? []);
 
         $statusCounts = [
-            'Baru Masuk' => $laporans->where('status', 'Baru Masuk')->count(),
-            'Sedang Diverifikasi' => $laporans->where('status', 'Sedang Diverifikasi')->count(),
+            'Baru Masuk'              => $laporans->where('status', 'Baru Masuk')->count(),
+            'Sedang Diverifikasi'     => $laporans->where('status', 'Sedang Diverifikasi')->count(),
             'Selesai Ditindaklanjuti' => $laporans->where('status', 'Selesai Ditindaklanjuti')->count(),
         ];
 
         return view('dashboard', [
-            'user' => $user,
-            'laporans' => $laporans,
+            'user'         => $user,
+            'laporans'     => $laporans,
             'statusCounts' => $statusCounts,
         ]);
     }
 
     public function logout(Request $request)
     {
-        $request->session()->forget('user');
+        // bisa logout dari user atau admin, dua-duanya dibersihkan
+        $userToken  = session('user_token');
+        $adminToken = session('admin_token');
+
+        try {
+            if ($userToken) {
+                Http::withToken($userToken)->post($this->backend . '/api/auth/logout');
+            }
+            if ($adminToken) {
+                Http::withToken($adminToken)->post($this->backend . '/api/auth/logout');
+            }
+        } catch (\Throwable $e) {
+            // abaikan error logout backend
+        }
+
+        $request->session()->forget(['user', 'user_token', 'admin', 'admin_token']);
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
         return redirect()->route('login.form')->with('status', 'Anda telah keluar.');
     }
 
-    protected function rememberUser(Request $request, User $user): void
-    {
-        $request->session()->regenerate();
-
-        if ($user->is_admin) {
-            session([
-                'admin' => [
-                    'id'    => $user->id,
-                    'nama'  => $user->nama_lengkap,
-                    'email' => $user->email,
-                ],
-            ]);
-        } else {
-            session([
-                'user' => [
-                    'id'    => $user->id,
-                    'nama'  => $user->nama_lengkap,
-                    'email' => $user->email,
-                ],
-            ]);
-        }
-    }
-
-    protected function currentUser(): ?User
+    protected function currentUser()
     {
         $session = session('user');
-        if (! is_array($session) || ! isset($session['id'])) {
+
+        if (!is_array($session) || !isset($session['id'])) {
             return null;
         }
 
-        return User::find($session['id']);
+        return (object) [
+            'id'    => $session['id'],
+            'nama'  => $session['nama'],
+            'email' => $session['email'],
+        ];
     }
 }

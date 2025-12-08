@@ -2,98 +2,201 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Admin;
-use App\Models\Laporan;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\View\View;
+use Illuminate\Support\Facades\Http;
 
 class AdminController extends Controller
 {
-    public function loginForm(): View
+    private string $backend;
+
+    public function __construct()
     {
-        return view('admin.auth.login');
+        $this->backend = rtrim(config('services.backend.url'), '/');
     }
 
-    public function loginProcess(Request $request): RedirectResponse
+    public function loginForm()
+    {
+        // resources/views/admin/login.blade.php
+        return view('admin.login');
+    }
+
+    public function loginProcess(Request $request)
     {
         $request->validate([
-            'email' => ['required', 'email'],
-            'password' => ['required', 'string'],
+            'email'    => 'required|email',
+            'password' => 'required|string',
         ]);
 
-        $admin = Admin::where('email', $request->input('email'))->first();
+        // pakai endpoint login biasa, tapi cek is_admin
+        $response = Http::post($this->backend . '/api/auth/login', [
+            'email'    => $request->email,
+            'password' => $request->password,
+        ]);
 
-        if (! $admin || ! Hash::check($request->input('password'), $admin->password)) {
-            return back()->withInput()->withErrors(['email' => 'Kredensial tidak valid.']);
+        if (! $response->successful()) {
+            return back()
+                ->withInput()
+                ->withErrors(['email' => 'Email atau password salah']);
+        }
+
+        $data  = $response->json();
+        $user  = $data['user'] ?? null;
+        $token = $data['authorisation']['token'] ?? null;
+
+        if (! $user || ! $token || empty($user['is_admin']) || $user['is_admin'] != 1) {
+            return back()
+                ->withInput()
+                ->withErrors(['email' => 'Akun ini bukan admin.']);
         }
 
         $request->session()->regenerate();
 
-        session(['admin' => [
-            'id' => $admin->id,
-            'nama' => $admin->nama,
-            'email' => $admin->email,
-        ]]);
-
-        return redirect()->route('admin.dashboard')->with('status', 'Login admin berhasil.');
-    }
-
-    public function index(): View|RedirectResponse
-    {
-        if ($redirect = $this->ensureAdminAuthenticated()) {
-            return $redirect;
-        }
-
-        return view('admin.dashboard', [
-            'laporans' => Laporan::latest()->get(),
-            'admin' => session('admin'),
+        session([
+            'admin' => [
+                'id'    => $user['id'],
+                'nama'  => $user['nama_lengkap'] ?? $user['email'],
+                'email' => $user['email'],
+            ],
+            'admin_token' => $token,
         ]);
+
+        return redirect()->route('admin.dashboard');
     }
 
-    public function edit(int $id): View|RedirectResponse
+    public function logout(Request $request)
     {
-        if ($redirect = $this->ensureAdminAuthenticated()) {
-            return $redirect;
+        $token = session('admin_token');
+        if ($token) {
+            try {
+                // kalau nanti punya endpoint logout admin di backend, pakai di sini
+                Http::withToken($token)->post($this->backend . '/api/auth/logout');
+            } catch (\Throwable $e) {
+                // diamkan saja
+            }
         }
 
-        return app(LaporanController::class)->edit($id);
-    }
-
-    public function update(Request $request, int $id): RedirectResponse
-    {
-        if ($redirect = $this->ensureAdminAuthenticated()) {
-            return $redirect;
-        }
-
-        return app(LaporanController::class)->update($request, $id);
-    }
-
-    public function destroy(int $id): RedirectResponse
-    {
-        if ($redirect = $this->ensureAdminAuthenticated()) {
-            return $redirect;
-        }
-
-        return app(LaporanController::class)->destroy($id);
-    }
-
-    protected function ensureAdminAuthenticated(): ?RedirectResponse
-    {
-        if (! session()->has('admin')) {
-            return redirect()->route('admin.login.form')->with('error', 'Silakan login sebagai admin.');
-        }
-
-        return null;
-    }
-
-    public function logout(Request $request): RedirectResponse
-    {
-        $request->session()->forget('admin');
+        $request->session()->forget(['admin', 'admin_token']);
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('admin.login.form')->with('status', 'Logout admin berhasil.');
+        return redirect()->route('home')->with('status', 'Anda telah keluar sebagai admin.');
+    }
+
+    protected function ensureAdmin()
+    {
+        if (! session()->has('admin')) {
+            return redirect()->route('admin.login.form');
+        }
+
+        return (object) session('admin');
+    }
+
+
+    public function index(Request $request)
+    {
+        $admin = $this->ensureAdmin();
+        if ($admin instanceof \Illuminate\Http\RedirectResponse) {
+            return $admin;
+        }
+
+        $token = session('admin_token');
+
+        $response = Http::withToken($token)
+            ->acceptJson()
+            ->get($this->backend . '/api/admin/laporans');
+
+        if (! $response->successful()) {
+            return back()->withErrors([
+                'admin' => 'Gagal mengambil data laporan dari backend.',
+            ]);
+        }
+
+        $laporans = collect($response->json('laporans') ?? []);
+
+        return view('admin.dashboard', [
+            'admin'    => $admin,
+            'laporans' => $laporans,
+        ]);
+    }
+
+    public function edit($id)
+    {
+        $admin = $this->ensureAdmin();
+        if ($admin instanceof \Illuminate\Http\RedirectResponse) {
+            return $admin;
+        }
+
+        $token = session('admin_token');
+
+        $response = Http::withToken($token)
+            ->acceptJson()
+            ->get($this->backend . "/api/admin/laporans/{$id}");
+
+        if ($response->status() === 404) {
+            abort(404);
+        }
+        if (! $response->successful()) {
+            abort(500, 'Gagal mengambil data laporan.');
+        }
+
+        $laporan = (object) ($response->json('laporan') ?? []);
+
+        return view('admin.laporan_edit', [
+            'admin'   => $admin,
+            'laporan' => $laporan,
+        ]);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $admin = $this->ensureAdmin();
+        if ($admin instanceof \Illuminate\Http\RedirectResponse) {
+            return $admin;
+        }
+
+        $request->validate([
+            'status' => 'required|in:Baru Masuk,Sedang Diverifikasi,Selesai Ditindaklanjuti',
+        ]);
+
+        $token = session('admin_token');
+
+        $response = Http::withToken($token)
+            ->acceptJson()
+            ->put($this->backend . "/api/admin/laporans/{$id}", [
+                'status' => $request->status,
+            ]);
+
+        if (! $response->successful()) {
+            $msg = $response->json('message') ?? 'Gagal mengubah status laporan.';
+            return back()->withInput()->withErrors(['status' => $msg]);
+        }
+
+        return redirect()
+            ->route('admin.dashboard')
+            ->with('status', 'Status laporan berhasil diperbarui.');
+    }
+
+
+    public function destroy($id)
+    {
+        $admin = $this->ensureAdmin();
+        if ($admin instanceof \Illuminate\Http\RedirectResponse) {
+            return $admin;
+        }
+
+        $token = session('admin_token');
+
+        $response = Http::withToken($token)
+            ->acceptJson()
+            ->delete($this->backend . "/api/admin/laporans/{$id}");
+
+        if (! $response->successful()) {
+            $msg = $response->json('message') ?? 'Gagal menghapus laporan.';
+            return back()->withErrors(['hapus' => $msg]);
+        }
+
+        return redirect()
+            ->route('admin.dashboard')
+            ->with('status', 'Laporan berhasil dihapus.');
     }
 }

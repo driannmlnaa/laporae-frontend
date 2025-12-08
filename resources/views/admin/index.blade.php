@@ -13,10 +13,11 @@
 
     <p>Halo, {{ $admin['nama'] ?? 'Admin' }}.</p>
 
-    <form method="POST" action="{{ route('admin.logout') }}">
+    <form action="{{ route('admin.logout') }}" method="POST" class="d-inline">
         @csrf
-        <button type="submit">Logout</button>
+        <button type="submit" class="btn btn-outline-danger btn-sm">Logout</button>
     </form>
+
 
     <h2>Daftar Semua Laporan</h2>
 

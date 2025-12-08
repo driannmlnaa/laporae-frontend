@@ -4,7 +4,7 @@
 
 @section('content')
 @php
-    $displayName = $user->nama_lengkap ?? $user->email ?? 'Pengguna';
+    $displayName = $user->nama ?? $user->nama_lengkap ?? $user->email ?? 'Pengguna';
     $statusCounts = $statusCounts ?? [
         'Baru Masuk' => 0,
         'Sedang Diverifikasi' => 0,
@@ -81,23 +81,44 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach ($laporans as $laporan)
+                        @forelse ($laporans as $raw)
                             @php
-                                $badgeClass = match ($laporan->status) {
-                                    'Baru Masuk' => 'bg-primary-subtle text-primary',
-                                    'Sedang Diverifikasi' => 'bg-warning-subtle text-warning-emphasis',
+                                // pastikan berbentuk object
+                                $laporan = is_array($raw) ? (object) $raw : $raw;
+
+                                $status = $laporan->status ?? '';
+
+                                $badgeClass = match ($status) {
+                                    'Baru Masuk'              => 'bg-primary-subtle text-primary',
+                                    'Sedang Diverifikasi'     => 'bg-warning-subtle text-warning-emphasis',
                                     'Selesai Ditindaklanjuti' => 'bg-success-subtle text-success-emphasis',
-                                    default => 'bg-secondary-subtle text-secondary-emphasis',
+                                    default                   => 'bg-secondary-subtle text-secondary-emphasis',
                                 };
-                                $fotoUrl = $laporan->foto_url;
+
+                                // foto dari backend: field-nya "foto" → jadikan URL penuh
+                                $fotoPath = $laporan->foto ?? null;
+                                $fotoUrl  = $fotoPath ? url($fotoPath) : null;
+
+                                // created_at dari API biasanya string
+                                $createdAt = null;
+                                if (!empty($laporan->created_at)) {
+                                    try {
+                                        $createdAt = \Carbon\Carbon::parse($laporan->created_at)->format('d M Y H:i');
+                                    } catch (\Throwable $e) {
+                                        $createdAt = $laporan->created_at;
+                                    }
+                                }
                             @endphp
+
                             <tr>
-                                <td>{{ $laporan->judul }}</td>
-                                <td>{{ $laporan->kategori }}</td>
+                                <td>{{ $laporan->judul ?? '-' }}</td>
+                                <td>{{ $laporan->kategori ?? '-' }}</td>
                                 <td>
-                                    <span class="badge rounded-pill {{ $badgeClass }}">{{ $laporan->status }}</span>
+                                    <span class="badge rounded-pill {{ $badgeClass }}">
+                                        {{ $status ?: '-' }}
+                                    </span>
                                 </td>
-                                <td>{{ $laporan->created_at?->format('d M Y H:i') }}</td>
+                                <td>{{ $createdAt ?? '-' }}</td>
                                 <td>
                                     @if ($fotoUrl)
                                         <a href="{{ $fotoUrl }}" target="_blank" class="link-primary text-decoration-none">Lihat Foto</a>
@@ -107,18 +128,32 @@
                                 </td>
                                 <td class="text-end">
                                     <div class="d-flex justify-content-end gap-2">
-                                        <a href="{{ route('laporan.show', $laporan->id) }}" class="btn btn-outline-primary btn-sm">Detail</a>
-                                        <a href="{{ route('laporan.edit', $laporan->id) }}" class="btn btn-outline-secondary btn-sm">Edit</a>
-                                        <form action="{{ route('laporan.destroy', $laporan->id) }}" method="POST" onsubmit="return confirm('Hapus laporan ini?');">
+                                        <a href="{{ route('laporan.show', $laporan->id) }}" class="btn btn-outline-primary btn-sm">
+                                            Detail
+                                        </a>
+                                        <a href="{{ route('laporan.edit', $laporan->id) }}" class="btn btn-outline-secondary btn-sm">
+                                            Edit
+                                        </a>
+                                        <form action="{{ route('laporan.destroy', $laporan->id) }}" method="POST"
+                                            onsubmit="return confirm('Hapus laporan ini?');">
                                             @csrf
                                             @method('DELETE')
-                                            <button type="submit" class="btn btn-danger btn-sm">Hapus</button>
+                                            <button type="submit" class="btn btn-danger btn-sm">
+                                                Hapus
+                                            </button>
                                         </form>
-                                     </div>
+                                    </div>
                                 </td>
                             </tr>
-                        @endforeach
+                        @empty
+                            <tr>
+                                <td colspan="6" class="text-center text-muted">
+                                    Belum ada laporan. Yuk buat laporan pertama Anda!
+                                </td>
+                            </tr>
+                        @endforelse
                     </tbody>
+
                 </table>
             </div>
             <p class="text-muted small mt-2 mb-0">

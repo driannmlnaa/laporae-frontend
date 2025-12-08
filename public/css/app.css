@@ -24,3 +24,23 @@ body {
 .table thead th {
     font-weight: 600;
 }
+/* Matikan semua backdrop yang nutup layar (modal / offcanvas Bootstrap) */
+.modal-backdrop,
+.offcanvas-backdrop {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    background: transparent !important;
+    z-index: -1 !important;
+}
+
+/* Kalau body lagi dalam keadaan modal-open, jangan disable scroll */
+body.modal-open {
+    overflow: auto !important;
+}
+
+/* Jaga-jaga kalau ada overlay lain */
+.overlay,
+.backdrop {
+    pointer-events: none !important;
+    background: transparent !important;
+}
