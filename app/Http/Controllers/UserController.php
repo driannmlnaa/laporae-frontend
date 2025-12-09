@@ -195,7 +195,7 @@ class UserController extends Controller
                 Http::withToken($userToken)->post($this->backend . '/api/auth/logout');
             }
             if ($adminToken) {
-                Http::withToken($adminToken)->post($this->backend . '/api/auth/logout');
+                Http::withToken($adminToken)->post($this->backend . '/api/admin/logout');
             }
         } catch (\Throwable $e) {
             // abaikan error logout backend

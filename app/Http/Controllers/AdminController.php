@@ -27,8 +27,7 @@ class AdminController extends Controller
             'password' => 'required|string',
         ]);
 
-        // pakai endpoint login biasa, tapi cek is_admin
-        $response = Http::post($this->backend . '/api/auth/login', [
+        $response = Http::post($this->backend . '/api/admin/login', [
             'email'    => $request->email,
             'password' => $request->password,
         ]);
@@ -43,10 +42,10 @@ class AdminController extends Controller
         $user  = $data['user'] ?? null;
         $token = $data['authorisation']['token'] ?? null;
 
-        if (! $user || ! $token || empty($user['is_admin']) || $user['is_admin'] != 1) {
+        if (! $user || ! $token) {
             return back()
                 ->withInput()
-                ->withErrors(['email' => 'Akun ini bukan admin.']);
+                ->withErrors(['email' => 'Gagal login admin.']);
         }
 
         $request->session()->regenerate();
@@ -54,7 +53,7 @@ class AdminController extends Controller
         session([
             'admin' => [
                 'id'    => $user['id'],
-                'nama'  => $user['nama_lengkap'] ?? $user['email'],
+                'nama'  => $user['nama'] ?? ($user['nama_lengkap'] ?? $user['email']),
                 'email' => $user['email'],
             ],
             'admin_token' => $token,
@@ -68,8 +67,7 @@ class AdminController extends Controller
         $token = session('admin_token');
         if ($token) {
             try {
-                // kalau nanti punya endpoint logout admin di backend, pakai di sini
-                Http::withToken($token)->post($this->backend . '/api/auth/logout');
+                Http::withToken($token)->post($this->backend . '/api/admin/logout');
             } catch (\Throwable $e) {
                 // diamkan saja
             }
