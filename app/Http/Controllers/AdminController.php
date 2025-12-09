@@ -27,7 +27,7 @@ class AdminController extends Controller
             'password' => 'required|string',
         ]);
 
-        $response = Http::post($this->backend . '/api/admin/login', [
+        $response = Http::post($this->backend . '/api/auth/login', [
             'email'    => $request->email,
             'password' => $request->password,
         ]);
@@ -67,7 +67,7 @@ class AdminController extends Controller
         $token = session('admin_token');
         if ($token) {
             try {
-                Http::withToken($token)->post($this->backend . '/api/admin/logout');
+                Http::withToken($token)->post($this->backend . '/api/auth/logout');
             } catch (\Throwable $e) {
                 // diamkan saja
             }
